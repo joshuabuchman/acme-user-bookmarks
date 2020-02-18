@@ -1,19 +1,287 @@
 <html>
   <head>
-<style>
-
-</style>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/axios/0.18.0/axios.js'></script>
-    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
     <script src="https://unpkg.com/react@16/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js" crossorigin></script>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/react-router-dom/5.0.0/react-router-dom.js'></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/axios/0.19.0/axios.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/react-router-dom/5.0.1/react-router-dom.js'></script>
+<style>
+
+body 
+{
+    font-family: sans-serif;
+}
+.selected 
+{
+    background-color: darkcyan;
+    color: white;
+    padding: 0.5rem;
+}
+input
+{
+    height: 2rem;
+    font-size: 1rem;
+    width: 100%;
+    margin: .5rem;
+}
+form
+{
+    display: flex;
+    border: solid 1px black;
+    justify-content: center;
+    flex-direction: column;
+    padding: 1rem;
+    align-items: center;
+}
+.create, button{
+    padding: .5em;
+    font-size: 1rem;
+    width: 100%;
+    margin: .5rem;
+}
+nav
+{
+    display: flex;
+    padding: 1rem;
+    justify-content: space-around;
+    align-items: center;
+}
+ul
+{
+    list-style: none;
+    padding: 0rem;
+}
+li
+{
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    height: 2rem;
+    font-size: 1rem;
+    width: 100%;
+    margin-bottom: 2rem;
+}
+.destroy, button
+{
+    flex: 1;
+    height: 2rem;
+    font-size: 1rem;
+    width: 100%;
+    padding-right: 1rem;
+}
+.url
+{
+    flex: 1;
+    font-weight: bold;
+}
+#warning
+{
+    color: red;
+    text-align: center;
+}
+</style>
   </head>
   <body>
     <div id='root'></div>
     <script type='text/babel'>
+      const API = 'https://acme-users-api-rev.herokuapp.com/api';
+
+      const { render } = ReactDOM;
+      const { Component } = React;
+      const { HashRouter, Route, Link, Switch, Redirect } = ReactRouterDOM;
+
+      const fetchUser = async ()=> 
+      {
+          const storage = window.localStorage;
+          const userId = storage.getItem('userId'); 
+          if(userId)
+          {
+              try 
+              {
+                return (await axios.get(`${API}/users/detail/${userId}`)).data;
+              }
+              catch(ex)
+              {
+                storage.removeItem('userId');
+                return fetchUser();
+              }
+          }
+          const user = (await axios.get(`${API}/users/random`)).data;
+          storage.setItem('userId', user.id);
+          return user;
+      };
+      const Warning = ( bookmarks ) =>
+      {
+        if(bookmarks.length === 10)
+          {
+              return(
+                  <div id = 'warning'>
+                    MAXIMUM amount of bookmarks reached <br/>
+                    You may no longer add more bookmarks <br/>
+                    Please destroy bookmarks in order to add more
+                  </div>
+              )
+          }
+          if(bookmarks.length > 7)
+          {
+              return(
+                  <div id = 'warning'>
+                    WARNING: Total number of allowed bookmarks is 10 <br/>
+                    Approaching MAXIMUM amount of bookmarks
+                  </div>
+              )
+          }
+      }
+
+      const List = ({ bookmarks, create, destroy, match, history })=> 
+      {
+          const filter = match.params.filter;
+          let categories = [];
+          let filtered = bookmarks;
+          if(filter)
+          {
+              filtered = filtered.filter( bookmark => 
+              {
+                  if(filter === bookmark.category)
+                  {
+                      return bookmark.url;
+                  }
+              });
+          }
+          bookmarks.forEach( bookmark =>
+          {
+                if(!categories.includes(bookmark.category))
+                {
+                    categories.push(bookmark.category);
+                }
+          })
+          return(
+              <main>
+                <nav>
+                  <Link to = '/' className = { !filter? 'selected' : ''}>All Bookmarks</Link>
+                  {
+                      categories.map( category =>
+                      {
+                            const count = bookmarks.filter( bookmark =>
+                            {
+                                  return(bookmark.category === category)
+                            })
+                            return(
+                            <Link to = {`/${category}`} id = 'category' className = { filter === `${category}` ? 'selected' : ''}>{ category } ({ count.length })</Link>
+                            )
+                      })
+                  }
+                </nav>
+                  <Create create = { create } history = { history }/>
+                  { Warning( bookmarks ) }
+                  <ul>
+                    {
+                        filtered.map( (bookmark, idx) =>
+                        {
+                            return(
+                                <li key = { idx }>
+                                <div className = 'url'>
+                                      <a href = { 'http://'+bookmark.url } target = '_blank'> { bookmark.url } </a>
+                                </div>
+                                <div className = 'destroy'>
+                                      <button onClick = { () => destroy(bookmark) }> Destroy </button>
+                                </div>
+                                </li>
+                            )
+                        })
+                    }
+                  </ul>
+              </main>
+          );
+      };
+
+      class Create extends Component
+      {
+          constructor()
+          {
+              super(); 
+              this.state = {
+                url: '',
+                category: '',
+                error: ''
+              };
+              this.create = this.create.bind(this);
+          }
+          async create()
+          {
+            try 
+            {
+                await this.props.create({ category: (this.state.category).toUpperCase(), url: this.state.url})
+                this.props.history.push('/')
+                this.setState({ 
+                    url: '',
+                    category: '',
+                    error: ''
+                 })
+            } catch (error) 
+            {
+                console.error(error)
+                this.setState({ error: <div id = 'warning'> Please enter a valid URL <br/> Valid URLs must end with a TLD <br/> (i.e. .com, .gov, .edu, .org) </div> })   
+            }
+          }
+          render()
+          {
+              const { url, category } = this.state;
+              const { create } = this;
+              return (
+                <form onSubmit = { ev => ev.preventDefault() }>
+                    <input value = { url } placeholder = 'url' onChange = { (ev) => this.setState({ url: ev.target.value }) }/>
+                    <input value = { category } placeholder = 'category' onChange = { (ev) => this.setState({ category: ev.target.value }) }/>
+                    <button disabled = { !url || !category } onClick = { create } className = 'create'> Create </button>
+                    { this.state.error }
+                </form>);
+          }
+      }
+
+      class App extends Component
+      {
+          constructor()
+          {
+              super();
+              this.state = {
+                user: {},
+                bookmarks: []
+              };
+              this.create = this.create.bind(this);
+              this.destroy = this.destroy.bind(this);
+          }
+
+          async componentDidMount()
+          {
+              const user = await fetchUser();
+              const bookmarks = (await axios.get(`${API}/users/${ user.id }/bookmarks`)).data;
+              this.setState({ bookmarks, user });
+          }
+          async create(bookmark)
+          {
+              const created = (await axios.post(`${API}/users/${this.state.user.id}/bookmarks`, {category: bookmark.category, url: bookmark.url})).data;
+              const bookmarks = [...this.state.bookmarks, created ];
+              this.setState({ bookmarks }); 
+          }
+          async destroy(bookmark)
+          {
+              await axios.delete(`${API}/users/${this.state.user.id}/bookmarks/${bookmark.id}`);
+              this.setState({ bookmarks : this.state.bookmarks.filter( _bookmark => _bookmark.id !== bookmark.id)});
+          }
+
+          render()
+          {
+              const { bookmarks, user } = this.state;
+              const { create, destroy } = this;
+              return (
+                <HashRouter>
+                  <h1>{ user.id ? user.fullName : '' }({bookmarks.length} Bookmarks)</h1>
+                    <Route path='/:filter?' render = { (props) => <List {...props} bookmarks = { bookmarks } create = { create } destroy = { destroy } />}/>
+                </HashRouter>
+          )}
+      }
       const root = document.querySelector('#root');
-      ReactDOM.render(<hr />, root);
+      render(<App />, root);
     </script>
   </body>
 </html>
